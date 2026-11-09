@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Vim Quest</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#1b1b2f;--fg:#f4f1de;--pn:#272744;--ac:#f2c14e;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1b1b2f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px ui-monospace,Menlo,Consolas,monospace}
+#app{max-width:820px;margin:auto;padding:12px}button{font:inherit;background:var(--ac);color:#222;border:0;border-radius:6px;padding:8px 12px;cursor:pointer;margin:2px}button:disabled{opacity:.35;cursor:not-allowed}
+h1{font-size:44px;text-align:center;margin:10px;color:var(--ac)}.c{text-align:center}.bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+canvas{width:100%;image-rendering:pixelated;border-radius:8px;display:block;background:#000}
+.obj{background:var(--pn);padding:10px;border-radius:8px;margin:8px 0}#hint{color:var(--ac);margin-left:8px}
+#ed{background:#0d0d1a;border:2px solid #444;border-radius:8px;padding:10px;min-height:220px;font-size:18px;white-space:pre;overflow:auto;outline:none}
+#ed:focus{border-color:var(--ac)}.cu{background:var(--ac);color:#000}.cb{border-left:2px solid var(--ac);margin-left:-2px}.sl{background:#3d5a80}
+#st{background:var(--pn);padding:6px 10px;border-radius:6px;margin-top:6px;min-height:30px}
+.w{margin:10px 0;padding:8px;border-radius:8px;background:var(--pn)}.w h3{margin:0 0 6px}.ov{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center}
+.ov div{background:var(--pn);padding:24px;border-radius:12px;text-align:center;border:3px solid var(--ac)}pre{margin:4px 0}.g{opacity:.45}
+</style></head><body><div id="app"></div>
+<script>
+/* ===== Vim-subset engine written in JS (NOT vim.wasm): see implemented keys in UI ===== */
+function Vim(init){
+const S={L:init.split('\n'),r:0,c:0,m:'n',b:'',R:{},u:[],d:[],last:'',cur:null,cmd:'',cp:'',vs:0,vl:0,msg:'',rec:null,mac:{},fc:null,rep:0,ls:'',sd:1,lm:'',fb:'',mk:{},jl:[],ji:0,sv:0};
+const cls=(h,B)=>!h||/\s/.test(h)?0:B?1:/\w/.test(h)?1:2,T=()=>S.L.join('\n'),setT=t=>{S.L=t.split('\n')},
+off=(r,c)=>{let p=0;for(let i=0;i<r;i++)p+=S.L[i].length+1;return p+c},P=()=>off(S.r,S.c),
+RC=p=>{p=Math.max(0,Math.min(p,T().length));let r=0;while(r<S.L.length-1&&p>S.L[r].length){p-=S.L[r].length+1;r++}S.r=r;S.c=p},
+row=p=>{let r=0;while(r<S.L.length-1&&p>S.L[r].length){p-=S.L[r].length+1;r++}return r},
+fix=()=>{S.r=Math.max(0,Math.min(S.r,S.L.length-1));const n=S.L[S.r].length;S.c=Math.max(0,Math.min(S.c,S.m=='i'?n:n-1))},
+snap=()=>{S.u.push([S.L.slice(),S.r,S.c]);S.d=[]},
+setR=(n,x,l,y)=>{if(n=='_')return;if(n&&n>='A'&&n<='Z'){const k=n.toLowerCase(),o=S.R[k];if(o){x=(o[1]||l)?o[0]+'\n'+x:o[0]+x;l=o[1]||l}n=k}S.R['"']=[x,l];if(n)S.R[n]=[x,l];if(y&&!n)S.R['0']=[x,l]},
+jp=()=>{S.jl.length=Math.min(S.jl.length,S.ji);S.jl.push([S.r,S.c]);S.ji=S.jl.length},
+jback=()=>{if(S.ji==S.jl.length&&S.jl.length){S.jl.push([S.r,S.c]);S.ji--}if(S.ji>0){S.ji--;[S.r,S.c]=S.jl[S.ji]}},
+jfwd=()=>{if(S.ji<S.jl.length-1){S.ji++;[S.r,S.c]=S.jl[S.ji]}};
+const W1={w:(p,t,B)=>{const n=t.length;let k=cls(t[p],B);if(k)while(p<n&&cls(t[p],B)==k)p++;while(p<n&&cls(t[p],B)==0)p++;return p},
+b:(p,t,B)=>{p--;while(p>0&&cls(t[p],B)==0)p--;if(p<0)return 0;const k=cls(t[p],B);while(p>0&&cls(t[p-1],B)==k)p--;return p},
+e:(p,t,B)=>{const n=t.length;p++;while(p<n&&cls(t[p],B)==0)p++;if(p>=n)return n-1;const k=cls(t[p],B);while(p<n-1&&cls(t[p+1],B)==k)p++;return p}};
+const ft=(k,ch,N)=>{S.fc=[k,ch];const ln=S.L[S.r],d='ft'.includes(k)?1:-1;let i=S.c;for(let n=0;n<N;n++){i+=d;while(i>=0&&i<ln.length&&ln[i]!=ch)i+=d;if(i<0||i>=ln.length)return null}if(k=='t')i--;if(k=='T')i++;return{p:off(S.r,i),inc:d>0}};
+function obj(k,o,p,t){const a=k=='a',n=t.length;
+ if(o=='w'||o=='W'){const B=o=='W',c=cls(t[p],B);let s=p,e=p;while(s>0&&cls(t[s-1],B)==c&&t[s-1]!='\n')s--;while(e<n&&cls(t[e],B)==c&&t[e]!='\n')e++;if(a){if(c&&t[e]==' '){while(t[e]==' ')e++}else while(s>0&&t[s-1]==' ')s--}return{s,e}}
+ if('"\'`'.includes(o)){const ls=off(S.r,0),ln=S.L[S.r],ix=[];for(let i=0;i<ln.length;i++)if(ln[i]==o)ix.push(i);for(let j=0;j+1<ix.length;j+=2)if(S.c<=ix[j+1])return a?{s:ls+ix[j],e:ls+ix[j+1]+1}:{s:ls+ix[j]+1,e:ls+ix[j+1]};return null}
+ const pr={'(':'()',')':'()',b:'()','{':'{}','}':'{}',B:'{}','[':'[]',']':'[]','<':'<>','>':'<>'}[o];
+ if(pr){let d=0,s=-1,e=-1;for(let i=p;i>=0;i--){if(t[i]==pr[1]&&i!=p)d++;else if(t[i]==pr[0]){if(!d){s=i;break}d--}}if(s<0)return null;d=0;for(let i=s+1;i<n;i++){if(t[i]==pr[0])d++;else if(t[i]==pr[1]){if(!d){e=i;break}d--}}if(e<0)return null;return a?{s,e:e+1}:{s:s+1,e}}
+ if(o=='t'){const re=/<(\w+)[^>]*>([\s\S]*?)<\/\1>/g;let m,best=null;while(m=re.exec(t)){const s=m.index,e=s+m[0].length;if(p>=s&&p<e)best=a?{s,e}:{s:s+m[0].indexOf('>')+1,e:e-m[1].length-3}}return best}
+ if(o=='p'){let r1=S.r,r2=S.r;const bl=r=>S.L[r].trim()=='',b=bl(r1);while(r1>0&&bl(r1-1)==b)r1--;while(r2<S.L.length-1&&bl(r2+1)==b)r2++;if(a&&!b)while(r2<S.L.length-1&&bl(r2+1))r2++;return{lw:1,r1,r2}}
+ return null}
+function mot(s,n,op){const t=T(),p=P(),k=s[0],N=n||1,ln=S.L[S.r],B=k=='W'||k=='B'||k=='E',last=S.L.length-1;
+ if('fFtT'.includes(k)){if(s.length<2)return;return ft(k,s[1],N)}
+ if("'`".includes(k)){if(s.length<2)return;const q=S.mk[s[1]];if(!q)return null;const r=Math.min(q[0],last);return k=="'"?{p:off(r,Math.max(0,S.L[r].search(/\S/))),lw:1}:{p:off(r,Math.min(q[1],S.L[r].length))}}
+ if(k=='g'){if(s.length<2)return;return s[1]=='g'?{p:off(n?Math.min(n,last+1)-1:0,0),lw:1}:null}
+ if(op&&(k=='i'||k=='a')){if(s.length<2)return;return obj(k,s[1],p,t)}
+ const bl=r=>S.L[r].trim()=='';
+ switch(k){
+ case'h':return{p:Math.max(p-N,off(S.r,0))};case'l':return{p:Math.min(p+N,off(S.r,ln.length))};
+ case'j':case'k':{const r=Math.max(0,Math.min(last,S.r+(k=='j'?N:-N)));return{p:off(r,Math.min(S.c,Math.max(S.L[r].length-1,0))),lw:1}}
+ case'w':case'W':{let q=p;for(let i=0;i<N;i++)q=W1.w(q,t,B);return{p:q}}
+ case'b':case'B':{let q=p;for(let i=0;i<N;i++)q=W1.b(q,t,B);return{p:q}}
+ case'e':case'E':{let q=p;for(let i=0;i<N;i++)q=W1.e(q,t,B);return{p:q,inc:1}}
+ case'0':return{p:off(S.r,0)};case'^':return{p:off(S.r,Math.max(0,ln.search(/\S/)))};
+ case'$':return ln?{p:off(S.r,ln.length-1),inc:1}:{p:p};
+ case'G':return{p:off(n?Math.min(n,last+1)-1:last,0),lw:1};
+ case'H':return{p:off(0,Math.max(0,S.L[0].search(/\S/))),lw:1};
+ case'M':{const r=Math.floor(last/2);return{p:off(r,Math.max(0,S.L[r].search(/\S/))),lw:1}}
+ case'L':return{p:off(last,Math.max(0,S.L[last].search(/\S/))),lw:1};
+ case'}':{let r=S.r;while(r<last&&bl(r))r++;while(r<last&&!bl(r))r++;return{p:off(r,bl(r)?0:S.L[r].length)}}
+ case'{':{let r=S.r;while(r>0&&bl(r))r--;while(r>0&&!bl(r))r--;return{p:off(r,0)}}
+ case';':return S.fc?ft(S.fc[0],S.fc[1],N):null;
+ case',':return S.fc?ft({f:'F',F:'f',t:'T',T:'t'}[S.fc[0]],S.fc[1],N):null;
+ case'\x04':return{p:off(Math.min(last,S.r+10),0),lw:1};case'\x15':return{p:off(Math.max(0,S.r-10),0),lw:1};
+ }return null}
+function ap(op,g,nm){
+ if(op=='y'){setR(nm,g.lw?S.L.slice(g.r1,g.r2+1).join('\n'):T().slice(g.s,g.e),g.lw,1);if(g.lw)S.r=g.r1;else RC(g.s);return}
+ snap();const r1=g.lw?g.r1:row(g.s),r2=g.lw?g.r2:row(Math.max(g.e-1,g.s));
+ if(op=='>'||op=='<'){for(let r=r1;r<=r2;r++)S.L[r]=op=='>'?(S.L[r]?'\t'+S.L[r]:S.L[r]):S.L[r].replace(/^\t| {1,8}/,'');S.r=r1;S.c=0;return}
+ if(g.lw){setR(nm,S.L.slice(r1,r2+1).join('\n'),1);if(op=='c'){S.L.splice(r1,r2-r1+1,'');S.r=r1;S.c=0;S.m='i'}else{S.L.splice(r1,r2-r1+1);if(!S.L.length)S.L=[''];S.r=Math.min(r1,S.L.length-1);S.c=0}return}
+ const t=T();setR(nm,t.slice(g.s,g.e),0);setT(t.slice(0,g.s)+t.slice(g.e));RC(g.s);if(op=='c')S.m='i'}
+function paste(bef,nm,N){const[x,lw]=S.R[nm||'"']||['',0];if(!x&&!lw)return;snap();
+ if(lw){let a=[];for(let i=0;i<N;i++)a=a.concat(x.split('\n'));const at=bef?S.r:S.r+1;S.L.splice(at,0,...a);S.r=at;S.c=Math.max(0,S.L[at].search(/\S/))}
+ else{const X=x.repeat(N),p=P()+(bef||!S.L[S.r].length?0:1),t=T();setT(t.slice(0,p)+X+t.slice(p));RC(p+X.length-1)}}
+function srch(d){let re;try{re=new RegExp(S.ls,'g')}catch(e){S.msg='Bad pattern';return}const t=T(),p=P(),all=[];let m;while((m=re.exec(t))){all.push(m.index);if(!m[0])re.lastIndex++}
+ if(!all.length){S.msg='E486: Pattern not found: '+S.ls;return}
+ const q=d>0?(all.find(i=>i>p)??all[0]):([...all].reverse().find(i=>i<p)??all[all.length-1]);jp();RC(q)}
+function ex(cp,s){s=s.trim();let m;S.msg='';
+ if(cp!=':'){S.ls=s;S.sd=cp=='/'?1:-1;return srch(S.sd)}
+ if(m=s.match(/^(%|\d+(?:,\d+)?)?s(.)(.*?)\2(.*?)(?:\2([gi]*))?$/)){let a=S.r,b=S.r;if(m[1]=='%'){a=0;b=S.L.length-1}else if(m[1]){const q=m[1].split(',').map(Number);a=q[0]-1;b=(q[1]||q[0])-1}
+  let re;try{const f=m[5]||'';re=new RegExp(m[3],(f.includes('g')?'g':'')+(f.includes('i')?'i':''))}catch(e){S.msg='Bad pattern';return}
+  snap();const rp=m[4].replace(/\\(\d)/g,'$$$1');for(let r=Math.max(a,0);r<=Math.min(b,S.L.length-1);r++)S.L[r]=S.L[r].replace(re,rp);S.c=0;return}
+ if(m=s.match(/^([gv])\/(.*?)\/d$/)){let re;try{re=new RegExp(m[2])}catch(e){S.msg='Bad pattern';return}snap();S.L=S.L.filter(l=>(m[1]=='g')?!re.test(l):re.test(l));if(!S.L.length)S.L=[''];S.r=0;S.c=0;return}
+ if(/^\d+$/.test(s)){S.r=Math.min(+s,S.L.length)-1;S.c=0;return}
+ if(/^(w|wq|x)$/.test(s)){S.sv=1;S.msg='"sandbox" written';return}
+ if(/^(q|q!)$/.test(s)){S.msg='(sandbox: nothing to quit)';return}
+ if(s=='noh'||/^set /.test(s)){S.msg='(accepted, no effect here)';return}
+ S.msg='E492: Not an editor command: '+s}
+function ik(k){if(k=='\x1b'){S.m='n';if(S.c>0)S.c--;return}const ln=S.L[S.r];
+ if(k=='\n'){S.L.splice(S.r,1,ln.slice(0,S.c),ln.slice(S.c));S.r++;S.c=0}
+ else if(k=='\b'){if(S.c>0){S.L[S.r]=ln.slice(0,S.c-1)+ln.slice(S.c);S.c--}else if(S.r>0){const pl=S.L[S.r-1].length;S.L.splice(S.r-1,2,S.L[S.r-1]+ln);S.r--;S.c=pl}}
+ else if(k=='\t'||k.length==1&&k>=' '){S.L[S.r]=ln.slice(0,S.c)+k+ln.slice(S.c);S.c++}}
+function ck(k){if(k=='\x1b')S.m='n';else if(k=='\n'){S.m='n';ex(S.cp,S.cmd)}else if(k=='\b'){if(S.cmd)S.cmd=S.cmd.slice(0,-1);else S.m='n'}else if(k.length==1)S.cmd+=k}
+function nk(k){
+ if(k=='\x1b'){S.b='';if(S.m=='v')S.m='n';return}
+ S.b+=k;const b=S.b,mm=b.match(/^(?:"(.))?([1-9]\d*)?([^]*)$/),nm=mm[1],n=mm[2]?+mm[2]:0,s=mm[3],N=n||1;if(!s||s=='"')return;
+ const c=s[0],p=P(),t=T(),ln=S.L[S.r],cl=()=>{S.fb=b;S.b=''},R=f=>{cl();f()};
+ if(c=='q'&&S.rec){S.rec=null;return cl()}
+ if("rfFtTqm@gZ'`".includes(c)&&s.length<2)return;
+ if(S.m=='v'){const g=S.vl?{lw:1,r1:row(Math.min(S.vs,p)),r2:row(Math.max(S.vs,p))}:{s:Math.min(S.vs,p),e:Math.max(S.vs,p)+1};
+  const o={d:'d',x:'d',y:'y',c:'c',s:'c','>':'>','<':'<'}[c];
+  if(o&&s.length==1){S.m='n';cl();ap(o,g,nm);return}
+  if(c=='v'||c=='V'){const l=c=='V'?1:0;if(l==S.vl)S.m='n';else S.vl=l;return cl()}
+  if(c=='o'){const q=S.vs;S.vs=p;RC(q);return cl()}
+  if((c=='i'||c=='a')){if(s.length<2)return;const x=obj(c,s[1],p,t);cl();if(x&&x.s!=null){S.vs=x.s;RC(x.e-1)}return}
+  const mv=mot(s,n);if(mv===undefined)return;cl();if(mv)RC(mv.p);return}
+ if('dcy><'.includes(c)){let r=s.slice(1);const m2=r.match(/^([1-9]\d*)?([^]*)$/),n2=m2[1]?+m2[1]:0;r=m2[2];if(!r)return;const NN=(n||n2)?(n||1)*(n2||1):0;let g;
+  if(r[0]==c)g={lw:1,r1:S.r,r2:Math.min(S.r+(NN||1)-1,S.L.length-1)};
+  else if(c=='c'&&(r=='w'||r=='W')&&cls(t[p],r=='W')&&!NN){let e=p;const k2=cls(t[p],r=='W');while(e<t.length&&cls(t[e],r=='W')==k2&&t[e]!='\n')e++;g={s:p,e}}
+  else{const mv=mot(r,NN,1);if(mv===undefined)return;if(!mv){cl();return}
+   if((r=='w'||r=='W')&&row(mv.p)>S.r&&NN<2)mv.p=off(S.r,ln.length);
+   if(mv.lw&&mv.r1==null)g={lw:1,r1:row(Math.min(p,mv.p)),r2:row(Math.max(p,mv.p))};else if(mv.r1!=null||mv.s!=null)g=mv;else g={s:Math.min(p,mv.p),e:Math.max(p,mv.p)+(mv.inc?1:0)}}
+  cl();ap(c,g,nm);return}
+ switch(c){
+ case'i':return R(()=>{snap();S.m='i'});case'a':return R(()=>{snap();S.m='i';S.c=Math.min(S.c+1,ln.length)});
+ case'I':return R(()=>{snap();S.m='i';S.c=Math.max(0,ln.search(/\S/))});case'A':return R(()=>{snap();S.m='i';S.c=ln.length});
+ case'o':return R(()=>{snap();S.L.splice(S.r+1,0,'');S.r++;S.c=0;S.m='i'});case'O':return R(()=>{snap();S.L.splice(S.r,0,'');S.c=0;S.m='i'});
+ case'x':return R(()=>{const e=Math.min(p+N,off(S.r,ln.length));if(e>p)ap('d',{s:p,e},nm)});
+ case'X':return R(()=>{const q=Math.max(p-N,off(S.r,0));if(q<p)ap('d',{s:q,e:p},nm)});
+ case'D':return R(()=>ap('d',{s:p,e:off(S.r,ln.length)},nm));case'C':return R(()=>ap('c',{s:p,e:off(S.r,ln.length)},nm));
+ case's':return R(()=>ap('c',{s:p,e:Math.min(p+N,off(S.r,ln.length))},nm));case'S':return R(()=>ap('c',{lw:1,r1:S.r,r2:S.r},nm));
+ case'Y':return R(()=>ap('y',{lw:1,r1:S.r,r2:S.r},nm));
+ case'J':return R(()=>{if(S.r<S.L.length-1){snap();for(let i=0;i<Math.max(N-1,1)&&S.r<S.L.length-1;i++){const a=S.L[S.r].replace(/\s+$/,''),q=S.L[S.r+1].trim();S.c=a.length;S.L.splice(S.r,2,a+(q?' ':'')+q)}}});
+ case'r':return R(()=>{const h=s[1];if(h>=' '&&S.c+N<=ln.length){snap();S.L[S.r]=ln.slice(0,S.c)+h.repeat(N)+ln.slice(S.c+N);S.c+=N-1}});
+ case'~':return R(()=>{if(ln){snap();const h=ln[S.c];S.L[S.r]=ln.slice(0,S.c)+(h==h.toUpperCase()?h.toLowerCase():h.toUpperCase())+ln.slice(S.c+1);S.c++}});
+ case'p':return R(()=>paste(0,nm,N));case'P':return R(()=>paste(1,nm,N));
+ case'u':return R(()=>{if(S.u.length){S.d.push([S.L.slice(),S.r,S.c]);[S.L,S.r,S.c]=S.u.pop()}});
+ case'\x12':return R(()=>{if(S.d.length){S.u.push([S.L.slice(),S.r,S.c]);[S.L,S.r,S.c]=S.d.pop()}});
+ case'\x0f':return R(jback);case'\t':return R(jfwd);
+ case'm':return R(()=>{S.mk[s[1]]=[S.r,S.c]});
+ case'.':return R(()=>{S.rep=1;for(const h of S.last)V_feed(h);S.rep=0});
+ case'v':case'V':return R(()=>{S.m='v';S.vs=p;S.vl=c=='V'?1:0});
+ case':':case'/':case'?':return R(()=>{S.m='c';S.cmd='';S.cp=c});
+ case'n':return R(()=>srch(S.sd));case'N':return R(()=>srch(-S.sd));
+ case'*':case'#':return R(()=>{const w=(/\w+/.exec(ln.slice(ln.slice(0,S.c+1).search(/\w*$/)))||[''])[0];if(w){S.ls='\\b'+w+'\\b';S.sd=c=='*'?1:-1;srch(S.sd)}});
+ case'Z':return R(()=>{if(s[1]=='Z'){S.sv=1;S.msg='"sandbox" written'}else S.msg='(sandbox: nothing to quit)'});
+ case'q':return R(()=>{S.rec=s[1];S.mac[S.rec]=''});
+ case'@':return R(()=>{const h=s[1]=='@'?S.lm:s[1];S.lm=h;const ks=S.mac[h]||'';for(let i=0;i<N;i++)for(const x of ks)V_feed(x)});
+ }
+ const mv=mot(s,n);if(mv===undefined)return;cl();if(mv){if(/^(G|gg|['`{}HML])/.test(s))jp();RC(mv.p)}}
+function V_feed(k){
+ if(S.rec&&!(S.m=='n'&&S.b==''&&k=='q'))S.mac[S.rec]+=k;
+ const wasV=S.m=='v',u0=S.u.length;
+ if(S.m=='i'){ik(k);if(S.cur!==null)S.cur+=k;if(k=='\x1b'){if(!S.rep&&S.cur!==null)S.last=S.cur;S.cur=null}}
+ else if(S.m=='c')ck(k);
+ else{nk(k);if(!wasV&&!S.rep&&S.u.length>u0&&S.b==''){if(S.m=='i')S.cur=S.fb;else S.last=S.fb}}
+ fix()}
+return{S,feed:V_feed,text:T}}
+
+/* ===== Game ===== */
+const $=s=>document.querySelector(s),app=$('#app'),esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const Wd=[{n:'Tutorial Village',c:'#6bbf59',s:'#9bd7ee'},{n:'Movement Forest',c:'#2f7d4f',s:'#7fb8a0'},{n:'Editing Town',c:'#b08a5a',s:'#e8c99b'},{n:'Copy Castle',c:'#8a8fa8',s:'#b7a8d8'},{n:'Undo Dungeon',c:'#4a3f6b',s:'#2a2140'},{n:'Visual Valley',c:'#5aa6a0',s:'#a8e0d6'},{n:'Search Desert',c:'#d9b25f',s:'#f2d8a0'},{n:'Replacement Kingdom',c:'#b5547a',s:'#e9a3be'},{n:'Text Object Mountains',c:'#7a8aa0',s:'#c8d8ee'},{n:'Register Fortress',c:'#8c5a3c',s:'#d9b99b'},{n:'Macro Lab',c:'#59b36b',s:'#243b2c'},{n:'Marks & Jumps',c:'#3a7ca5',s:'#bfe0f5'},{n:'Final Developer World',c:'#c0392b',s:'#2b1b1b'}];
+const PLANNED='Not implemented yet: Window City (buffers/windows/tabs), Configuration Workshop (.vimrc), Terminal Kingdom (external commands, Git), Block-visual (Ctrl-v), gv, :marks/:jumps listings, sentence motions and is/as objects, :s confirm flag, folds, system clipboard registers, search history. The engine is a JavaScript subset of Vim, not real Vim.';
+// [world,title,objective,start,goal,hint,skill,par,needSave]
+const M=[
+[0,'First Words','Append " World" to the line.','Hello','Hello World','A, type, Esc','Modes',9],
+[0,'New Line','Open a new line below and type Hi!','Dear Bob,','Dear Bob,\nHi!','o','Modes',5],
+[0,'Missing Letter','Insert the missing e.','Hllo','Hello','l then i','Modes',4],
+[0,'Save It','Append ! to the line, then save with :w.','Hello','Hello!','A ! Esc :w Enter','Modes',6,1],
+[0,'Quick Exit','Change "draft" to "final", then save with ZZ.','draft','final','cw final Esc ZZ','Modes',10,1],
+[1,'Big Problem','Delete the word "big".','the big red fox','the red fox','w then dw','Motion',3],
+[1,'End of File','Add ! at the end of the last line.','a\nb\nc','a\nb\nc!','G then A','Motion',4],
+[1,'Semicolon','Delete from the ; to the end of line.',"name = 'Bob'; age = 3","name = 'Bob'",'f; then D','Motion',3],
+[1,'Empty Gap','Remove the empty line (try }).','one\ntwo\n\nthree','one\ntwo\nthree','} then dd','Motion',3],
+[1,'Find Char','Delete "bar" using dt, from inside the parens.','foo(bar, baz)','foo(, baz)','f( l dt,','Motion',6],
+[1,'Top and Bottom','Append 1 to the first line and 2 to the last line (try H and L).','x\ny\nz','x1\ny\nz2','H A 1 Esc L A 2 Esc','Motion',9],
+[2,'Typo Fix','Fix "teh" by swapping letters.','teh cat','the cat','l x p','Edit',3],
+[2,'Join Up','Join the first two lines.','a\nb\nc','a b\nc','J','Edit',1],
+[2,'Rename','Rename every foo to bar, using . to repeat.','foo = 1\nfoo = 2\nfoo = 3','bar = 1\nbar = 2\nbar = 3','cw bar Esc j . j .','Edit',10],
+[3,'Clone','Copy line 1 to the end of the file.','one\ntwo','one\ntwo\none','yy G p','Yank',4],
+[3,'Swap','Swap the two lines.','B\nA','A\nB','dd p','Yank',3],
+[3,'Triplets','Make line 1 appear three times in total.','x\ny','x\nx\nx\ny','yy 2p','Yank',4],
+[4,'Whoops','Delete line 1, undo it, then delete the last line.','a\nb\nc','a\nb','dd u G dd','Undo',6],
+[4,'Redo','Delete line 1, undo, then redo.','1\n2\n3','2\n3','dd u Ctrl-r','Undo',4],
+[4,'Dot Dot','Remove "- " from every line.','- a\n- b\n- c','a\nb\nc','2x j . j .','Undo',6],
+[5,'Sweep','Delete lines b and c using linewise visual.','a\nb\nc\nd','a\nd','j V j d','Visual',4],
+[5,'Select Word','Visually select "two" and delete it.','one two three','one  three','w v e d','Visual',4],
+[5,'Swap Selection','Change "old" to "new" via visual.','Hello old world','Hello new world','w v e c new Esc','Visual',8],
+[6,'X Marks','Search for TARGET and delete that word.','foo bar\nbaz\nTARGET here','foo bar\nbaz\nhere','/TARGET Enter dw','Search',10],
+[6,'Backwards','Delete the LAST x on the last line.','a x\nb x\nc x\nd x','a x\nb x\nc x\nd ','?x Enter dw','Search',5],
+[6,'Star Power','Use * to jump to the next "id", then delete it with diw.','id = 1\nuse(id)\nid','id = 1\nuse()\nid','* diw','Search',4],
+[7,'Dogs','Replace every cat with dog.','cat cat\ncat','dog dog\ndog',':%s/cat/dog/g','Subst',15],
+[7,'Purge','Delete every line containing drop.','keep\ndrop 1\nkeep\ndrop 2','keep\nkeep',':g/drop/d','Subst',10],
+[7,'First Only','Replace only the first - on each line.','a-a-a\nb-b-b','a_a-a\nb_b-b',':%s/-/_/','Subst',9],
+[8,'Quote Me','Empty the quoted string, then press Esc.','x = "hello world"','x = ""','ci" Esc','Objects',4],
+[8,'Parens','Empty the parentheses.','print(a, b)','print()','f( l di(','Objects',6],
+[8,'Tags','Empty the b tag.','<b>bold</b>','<b></b>','dit','Objects',3],
+[9,'Named Stash','Delete line 2, but paste line 1 at the end. Store line 1 in register a.','alpha\nbeta\ngamma','alpha\ngamma\nalpha','"ayy j dd G "ap','Registers',11],
+[9,'Black Hole','Keep "keep" for pasting: delete the junk line without overwriting your yank, then paste at the end.','keep\njunk\nend','keep\nend\nkeep','yy j "_dd G p','Registers',9],
+[9,'Yank Zero','Delete line 2, then paste line 1 at the end using register 0.','one\ntwo\nthree','one\nthree\none','yy j dd G "0p','Registers',9],
+[10,'Bullets','Prefix every line with "- " using a macro.','a\nb\nc','- a\n- b\n- c','qa I- Esc j q 2@a','Macro',11],
+[10,'Brackets','Wrap every line in [ ] using a macro.','item one\nitem two\nitem three','[item one]\n[item two]\n[item three]','qa I[ Esc A] Esc j q 2@a','Macro',12],
+[11,'Mark and Return','Add ! to the first and the last line (try ma, G, \'a).','top\nmid\nbot','top!\nmid\nbot!','ma G A! Esc \'a A! Esc','Marks',12],
+[11,'Jump Back','Append ! to line 1 by jumping to the end and back with Ctrl-o.','one\ntwo\nthree','one!\ntwo\nthree','G Ctrl-o A ! Esc','Marks',5],
+[11,'Delete to Mark','Set a mark on line b, then delete from the mark to line d with d\'a.','a\nb\nc\nd\ne','a\ne','j ma j j d\'a','Marks',8],
+[12,'Boss: Rename','Rename variable total to sum everywhere.','total = 0\nfor n in nums:\n    total += n\nprint(total)','sum = 0\nfor n in nums:\n    sum += n\nprint(sum)',':%s/total/sum/g','Master',16],
+[12,'Boss: Quotes','Convert single quotes to double quotes everywhere.',"msg = 'hi'\nname = 'bob'",'msg = "hi"\nname = "bob"',':%s/\'/"/g','Master',12],
+[12,'Boss: Config','Remove every DEBUG line, then change port=80 to port=8080.','DEBUG=1\nname=app\nDEBUG=0\nport=80','name=app\nport=8080',':g/DEBUG/d then j A 80 Esc','Master',17]
+];
+const FREE='def total(items):\n    t = 0\n    for i in items:\n        t += i\n    return t\n\n# try anything: dd, ciw, :%s/t/sum/g, qa...';
+const blank={xp:0,coins:0,ch:0,done:{},sk:{},last:'',streak:0};
+let G;try{G=Object.assign({},blank,JSON.parse(localStorage.getItem('vq')||'{}'))}catch(e){G=Object.assign({},blank)}
+const save=()=>{try{localStorage.setItem('vq',JSON.stringify(G))}catch(e){}};
+const open=i=>i==0||G.done[i-1]!=null,lvl=()=>Math.floor(G.xp/100)+1,nd=()=>Object.keys(G.done).length,stars=()=>Object.values(G.done).reduce((a,b)=>a+b,0);
+const mast=s=>['Not started','Learning','Practising','Mastered'][Math.min((G.sk[s]||[]).length,3)];
+const SKILLS=[...new Set(M.map(m=>m[6]))];
+const ACH=[['First Steps','Complete a mission',()=>nd()>=1],['Adventurer','Complete 5 missions',()=>nd()>=5],['Perfectionist','Earn 3 stars on a mission',()=>Object.values(G.done).includes(3)],['On Fire','3-day streak',()=>G.streak>=3],['Skill Master','Master a skill',()=>SKILLS.some(s=>mast(s)=='Mastered')],['Vim Hero','Complete all missions',()=>nd()>=M.length]];
+const COL=['#e63946','#4361ee','#2a9d8f'];let anim=0,tmr=0;
+function stop(){anim++;clearInterval(tmr)}
+function hero(x,y,c,cx){cx.fillStyle=c;cx.fillRect(x,y-8,24,8);cx.fillRect(x+4,y-14,16,6);cx.fillStyle='#f2c9a0';cx.fillRect(x+4,y,16,14);cx.fillStyle='#222';cx.fillRect(x+8,y+4,3,3);cx.fillRect(x+15,y+4,3,3);cx.fillStyle='#3b3b6b';cx.fillRect(x+2,y+14,20,14);cx.fillRect(x+4,y+28,6,6);cx.fillRect(x+14,y+28,6,6)}
+function home(){stop();app.innerHTML=`<h1>⚔ VIM QUEST ⚔</h1><p class=c>Learn Vim by playing. Pick your hero:</p><div class=c>${COL.map((c,i)=>`<button onclick="G.ch=${i};save();home()" style="outline:${G.ch==i?'3px solid #fff':'0'}"><canvas width=30 height=40 data-c="${c}" style="width:60px;height:80px;background:none"></canvas></button>`).join('')}</div>
+<div class=c><button onclick=map()>▶ Adventure</button><button onclick=tt()>⏱ Time Trial</button><button onclick="play(-1)">Free Practice</button><button onclick=review()>Review</button><button onclick=prog()>Progress</button></div>
+<p class=c>Level ${lvl()} · ${G.xp} XP · ${G.coins} coins · ${stars()} ★</p>
+<p class=c style="opacity:.7;font-size:12px">Engine: a JavaScript implementation of core Vim behaviour (modes, motions, operators, text objects, registers incl. "a "A "_ "0, marks, jump list, undo/redo, search, :s, :g, macros). It is not vim.wasm and not complete Vim. Needs a physical keyboard.</p>`;
+document.querySelectorAll('canvas[data-c]').forEach(v=>hero(3,10,v.dataset.c,v.getContext('2d')))}
+function map(){stop();let h=`<div class=bar><button onclick=home()>☰ Menu</button><b>World Map</b></div>`;
+Wd.forEach((w,wi)=>{h+=`<div class=w style="border-left:8px solid ${w.c}"><h3>${wi+1}. ${w.n}</h3>`;M.forEach((m,i)=>{if(m[0]==wi)h+=`<button ${open(i)?'':'disabled'} onclick="play(${i})">${open(i)?'':'🔒 '}${m[1]} ${'★'.repeat(G.done[i]||0)}</button>`});h+='</div>'});
+app.innerHTML=h+`<div class="w g">${PLANNED}</div>`}
+function tt(){const o=M.map((m,i)=>i).filter(open);play(o[Math.floor(Math.random()*o.length)],{tt:1})}
+function review(){stop();let h=`<div class=bar><button onclick=home()>☰ Menu</button><b>Review: skill mastery</b></div>`;
+SKILLS.forEach(s=>{const ids=M.map((m,i)=>i).filter(i=>M[i][6]==s&&open(i));if(!ids.length)return;h+=`<div class=w>${s}: <b>${mast(s)}</b> (${(G.sk[s]||[]).length}/3 missions) <button onclick="play(${ids.find(i=>!(G.sk[s]||[]).includes(i))??ids[0]})">Practise</button></div>`});app.innerHTML=h}
+function prog(){stop();app.innerHTML=`<div class=bar><button onclick=home()>☰ Menu</button><b>Progress</b></div><div class=w>Level ${lvl()} · ${G.xp} XP · ${G.coins} coins · ${stars()} ★ · streak ${G.streak} day(s) · ${nd()}/${M.length} missions (${Math.round(100*nd()/M.length)}%)</div>
+<div class=w><h3>Mastery</h3>${SKILLS.map(s=>`<div>${s}: ${mast(s)}</div>`).join('')}</div><div class=w><h3>Achievements</h3>${ACH.map(a=>`<div class="${a[2]()?'':'g'}">${a[2]()?'🏆':'🔒'} ${a[0]} — ${a[1]}</div>`).join('')}</div><button onclick="if(confirm('Reset all progress?')){G=Object.assign({},blank,{done:{},sk:{}});save();home()}">Reset progress</button>`}
+let V,cur,keys,won,isTT,t0,sc;
+function play(i,o={}){stop();cur=i;isTT=o.tt;keys=0;won=0;t0=Date.now();const m=i<0?null:M[i],w=Wd[m?m[0]:0];V=Vim(m?m[3]:FREE);
+app.innerHTML=`<div class=bar><button onclick=home()>☰</button><button onclick=map()>Map</button><b>${m?w.n+' · '+m[1]:'Free Practice'}</b><span id=tm></span></div><canvas id=cv width=720 height=150></canvas>
+<div class=obj>${m?esc(m[2]):'Experiment freely.'} ${m?'<button id=hb>Hint</button><span id=hint></span>':''}</div><div id=ed tabindex=0></div><div id=st></div>${m?`<details><summary>Target text</summary><pre>${esc(m[4])}</pre></details>`:''}`;
+const ed=$('#ed');ed.focus();ed.onblur=()=>$('#st')&&($('#st').dataset.b=1);
+if(m)$('#hb').onclick=()=>{$('#hint').textContent='Hint: '+m[5];ed.focus()};
+ed.onkeydown=e=>{if(e.metaKey||e.altKey||won)return;let k=e.key;if(k=='Escape')k='\x1b';else if(k=='Enter')k='\n';else if(k=='Backspace')k='\b';else if(k=='Tab')k='\t';else if(e.ctrlKey&&k.length==1)k=String.fromCharCode(k.toUpperCase().charCodeAt(0)&31);else if(k.length!=1)return;e.preventDefault();keys++;V.feed(k);draw();if(m&&V.S.m=='n'&&V.text().trimEnd()==m[4].trimEnd()&&(!m[8]||V.S.sv))win()};
+draw();scene(w);if(isTT){const left=()=>Math.max(0,90-Math.floor((Date.now()-t0)/1000));tmr=setInterval(()=>{const t=$('#tm');if(!t||won)return;t.textContent='⏱ '+left()+'s';if(!left()){clearInterval(tmr);ov('<h2>Time\'s up!</h2><button onclick="play('+cur+',{tt:1})">Retry</button><button onclick=map()>Map</button>')}},500)}}
+function draw(){const S=V.S,v=S.m=='v',p0=V.S.vs;let a=0,b=-1;
+ if(v){let q=0;for(let i=0;i<S.r;i++)q+=S.L[i].length+1;q+=S.c;a=Math.min(p0,q);b=Math.max(p0,q)}
+ let q=0,h='';S.L.forEach((l,r)=>{let s='';for(let c=0;c<=l.length;c++){const ch=c<l.length?esc(l[c]):' ',sel=v&&(S.vl?(r>=Math.min(...[0]))&&0:q+c>=a&&q+c<=b);let cu=r==S.r&&c==S.c;
+  const vl=v&&S.vl&&(()=>{let x=0,ra=0,rb=0;let pr=0;for(let i=0;i<S.L.length;i++){if(pr<=p0&&p0<=pr+S.L[i].length)ra=i;pr+=S.L[i].length+1}rb=S.r;return r>=Math.min(ra,rb)&&r<=Math.max(ra,rb)})();
+  s+=cu?`<span class="${S.m=='i'?'cb':'cu'}">${ch}</span>`:(sel||vl)?`<span class=sl>${ch}</span>`:ch}h+=s+'\n';q+=l.length+1});
+ $('#ed').innerHTML=h;$('#st').textContent=S.m=='c'?S.cp+S.cmd:({n:'-- NORMAL --',i:'-- INSERT --',v:S.vl?'-- VISUAL LINE --':'-- VISUAL --'})[S.m]+'  '+S.b+(S.rec?'  recording @'+S.rec:'')+'  '+(S.msg||'')}
+function scene(w){const cv=$('#cv'),x=cv.getContext('2d'),id=++anim;const idx=cur<0?0:M.filter((m,i)=>m[0]==M[cur][0]&&i<cur).length,tot=cur<0?1:M.filter(m=>m[0]==M[cur][0]).length;sc={hx:20,tx:40+idx*(380/tot),win:0,t:0,dead:0};
+ (function loop(){if(id!=anim||!$('#cv'))return;sc.t++;x.fillStyle=w.s;x.fillRect(0,0,720,150);x.fillStyle=w.c;x.fillRect(0,110,720,40);for(let i=0;i<6;i++){x.fillStyle=w.c+'88';x.fillRect(i*130+20,80-(i%3)*10,60,30)}
+ x.fillStyle='#fff8';for(let i=0;i<3;i++)x.fillRect((i*260+sc.t/3)%760-40,20+i*14,50,12);
+ sc.hx+=(sc.tx-sc.hx)*.05;let hy=76;if(sc.win){sc.tx=560;hy-=Math.abs(Math.sin(sc.t/6))*30;if(sc.hx>520)sc.dead=1}
+ hero(sc.hx,hy,COL[G.ch],x);
+ if(!sc.dead){x.fillStyle='#7bd88f';x.fillRect(580,90,34,20);x.fillRect(586,84,22,8);x.fillStyle='#222';x.fillRect(590,92,4,4);x.fillRect(602,92,4,4)}
+ else for(let i=0;i<6;i++){x.fillStyle='#f2c14e';x.fillRect(560+i*14,70-((sc.t*2+i*9)%50),8,8)}
+ requestAnimationFrame(loop)})()}
+function ov(h){const d=document.createElement('div');d.className='ov';d.innerHTML='<div>'+h+'</div>';app.appendChild(d)}
+function win(){won=1;clearInterval(tmr);const m=M[cur],first=G.done[cur]==null,st=keys<=m[7]?3:keys<=m[7]*2?2:1;let xp=0,co=0;
+ if(first){xp=20+st*10;co=5+st*2+(isTT?10:0);G.xp+=xp;G.coins+=co}G.done[cur]=Math.max(G.done[cur]||0,st);const a=G.sk[m[6]]=G.sk[m[6]]||[];if(!a.includes(cur))a.push(cur);
+ const d=new Date().toDateString();if(G.last!=d){G.streak=G.last==new Date(Date.now()-864e5).toDateString()?G.streak+1:1;G.last=d}save();sc.win=1;
+ setTimeout(()=>ov(`<h2>Mission complete!</h2><div style="font-size:36px">${'★'.repeat(st)}${'☆'.repeat(3-st)}</div><p>${keys} keys (par ${m[7]})${first?`<br>+${xp} XP · +${co} coins`:'<br>(replay: no new rewards)'}</p>${cur+1<M.length?`<button onclick="play(${cur+1})">Next ▶</button>`:''}<button onclick="play(${cur})">Retry</button><button onclick=map()>Map</button>`),900)}
+home();
+</script></body></html>
